@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Create the benchmark droplet, ship code to it, and provision it.
-# Run LOCALLY. Requires: doctl authenticated, ~/statecore110 SSH key.
+# Run LOCALLY. Requires doctl authenticated and an SSH key registered with
+# DigitalOcean. Set SSH_KEY_ID (from `doctl compute ssh-key list`) and KEY (the
+# matching private key path) for your own account.
 set -euo pipefail
 
 NAME=${NAME:-statecore-bench}
 SIZE=${SIZE:-s-4vcpu-8gb}
 REGION=${REGION:-sfo3}
 IMAGE=${IMAGE:-ubuntu-24-04-x64}
-SSH_KEY_ID=${SSH_KEY_ID:-57309208}   # statecore110
-KEY=${KEY:-$HOME/statecore110}
+SSH_KEY_ID=${SSH_KEY_ID:?set SSH_KEY_ID — see: doctl compute ssh-key list}
+KEY=${KEY:?set KEY — path to the matching private key}
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
