@@ -124,13 +124,34 @@ licences stay theirs. Revisions used:
 | [xiaowu0162/LongMemEval](https://github.com/xiaowu0162/LongMemEval) | `9e0b455` |
 | [snap-research/locomo](https://github.com/snap-research/locomo) | `3eb6f2c` |
 
-Two deviations from mem0's published setup were needed to get it running, and
-they are reproduced in `provision/setup-mem0.sh`:
+### How mem0 is configured, and what was changed
 
-- Its harness pins `mem0ai @ git+…@feat/v3-pipeline`; that branch no longer exists
-  upstream. Tested against `feat/oss-add-v3-ingestion-caps` instead.
-- Current `mem0ai` rejects a top-level `user_id` in `search()` and requires
-  `filters={…}`. One line in its server; extraction, storage and ranking untouched.
+**mem0 is measured as released: `mem0ai==2.0.17`, unmodified.**
+
+Its own benchmark harness pins `mem0ai @ git+…@feat/v3-pipeline`, an unreleased
+feature branch that no longer exists upstream. Substituting its successor
+(`feat/oss-add-v3-ingestion-caps`, which resolves to 2.0.6) would mean publishing
+a number for a build nobody runs — and that branch adds an extraction cap the
+released version does not have. The pin is therefore moved to the current
+release.
+
+Two changes to mem0's **harness** (not to mem0 itself) were needed, both because
+that harness was written against an API revision that has since moved:
+
+- `search()` is called with `limit=…`, but the parameter is named `top_k`;
+  `limit` is swallowed by `**kwargs`, so every search silently returned the
+  default 20 however many were requested. This is not cosmetic — it is the entire
+  reason an earlier comparison gave mem0 20 items against StateCore's 50.
+- `search()` rejects a top-level `user_id` and requires `filters={…}`.
+
+Neither touches extraction, storage or ranking.
+
+**What was deliberately not fixed:** mem0 extracts nothing from some
+conversational sessions and then embeds an empty string, which the OpenAI API
+rejects, so a few percent of sessions fail to ingest. It is deterministic, not a
+transient error, and it is mem0's behaviour as shipped. Patching it would produce
+a number for something nobody runs. The loss is measured and reported per arm
+instead.
 
 ## Reading a result
 

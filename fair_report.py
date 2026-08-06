@@ -40,8 +40,17 @@ def wilson_halfwidth(correct, total):
     return 1.96 * math.sqrt(p * (1 - p) / total) * 100
 
 
-def load_scores(run_dir, arm, budget):
-    """Reads score.py's per-question verdicts for one arm at one budget."""
+def load_scores(run_dir, arm, budget, qtype_by_id=None):
+    """Reads the judge's per-question verdicts for one arm at one budget.
+
+    The verdict is `autoeval_label.label`, a bool inside a dict. Reading the dict
+    itself as the verdict makes every answer correct, since a non-empty dict is
+    truthy — the kind of mistake that yields a plausible-looking 100% and is only
+    obvious once someone checks a single row.
+
+    Question type is not in the results file; it comes from the dataset, which is
+    why this takes a lookup rather than guessing "unknown".
+    """
     path = os.path.join(run_dir, "answers", "%s-b%d" % (arm, budget), "hypotheses.jsonl.eval-results-gpt-4o")
     if not os.path.exists(path):
         return None
@@ -50,8 +59,12 @@ def load_scores(run_dir, arm, budget):
         if not line.strip():
             continue
         rec = json.loads(line)
-        ok = bool(rec.get("autoeval_label", rec.get("is_correct")))
-        qtype = rec.get("question_type", "unknown")
+        label = rec.get("autoeval_label")
+        if isinstance(label, dict):
+            ok = bool(label.get("label"))
+        else:
+            ok = bool(label)
+        qtype = (qtype_by_id or {}).get(rec["question_id"], "unknown")
         hit, seen = by_type.get(qtype, (0, 0))
         by_type[qtype] = (hit + (1 if ok else 0), seen + 1)
         correct += 1 if ok else 0
@@ -89,13 +102,20 @@ def load_fill_stats(run_dir, arm, budget):
     }
 
 
+def question_types(dataset):
+    return {q["question_id"]: q["question_type"] for q in json.load(open(dataset))}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="fair")
     ap.add_argument("--budgets", default="4000,16000,64000")
     ap.add_argument("--out", default=os.path.join(ROOT, "FAIR-REPORT.md"))
     ap.add_argument("--statecore-commit", default=None)
+    ap.add_argument("--dataset", default=os.path.join(ROOT, "data", "longmemeval_s.json"))
     args = ap.parse_args()
+
+    qtypes = question_types(args.dataset)
 
     run_dir = os.path.join(ROOT, "runs", args.run)
     budgets = [int(b) for b in args.budgets.split(",")]
@@ -130,12 +150,12 @@ def main():
             continue
         cells = []
         for budget in budgets:
-            s = load_scores(run_dir, arm, budget)
+            s = load_scores(run_dir, arm, budget, qtypes)
             cells.append("—" if not s else "%.1f%% ±%.1f" % (100 * s["correct"] / s["total"],
                                                              wilson_halfwidth(s["correct"], s["total"])))
         out.append("| **%s** | %s |" % (ARM_LABEL[arm], " | ".join(cells)))
 
-    ceiling = load_scores(run_dir, "full", 1_000_000)
+    ceiling = load_scores(run_dir, "full", 1_000_000, qtypes)
     if ceiling:
         out.append("\n**Ceiling** — the whole corpus in the prompt, no budget: **%.1f%% ±%.1f** (%d/%d).\n"
                    % (100 * ceiling["correct"] / ceiling["total"],
@@ -161,7 +181,7 @@ def main():
 
     out.append("\n## By question type\n")
     for budget in budgets:
-        rows = {arm: load_scores(run_dir, arm, budget) for arm in ARMS if load_scores(run_dir, arm, budget)}
+        rows = {arm: load_scores(run_dir, arm, budget, qtypes) for arm in ARMS if load_scores(run_dir, arm, budget, qtypes)}
         if not rows:
             continue
         out.append("\n**Budget %d tokens**\n" % budget)
@@ -206,14 +226,33 @@ def main():
     out.append("| scope template | `personal` |")
     out.append("| budgets | %s |" % ", ".join(str(b) for b in budgets))
 
+    out.append("\n## How much of each corpus survived ingest\n")
+    loss = (excluded or {}).get("_ingest_loss") or {}
+    if loss:
+        out.append("A system that holds less of the corpus is answering a different, easier or "
+                   "harder question. Reported rather than hidden, and rather than discarding every "
+                   "question it affects.\n")
+        out.append("| system | median corpus lost | worst question | questions over threshold |")
+        out.append("|---|---|---|---|")
+        for arm, stats in loss.items():
+            out.append("| %s | %.1f%% | %.1f%% | %d |" % (
+                ARM_LABEL.get(arm, arm), 100 * stats["median_loss"],
+                100 * stats["max_loss"], stats["questions_over_threshold"]))
+        out.append("\nmem0 is measured as released (`mem0ai==2.0.17`), unmodified. It extracts "
+                   "nothing from some conversational sessions and then embeds an empty string, "
+                   "which its own API rejects — so a few percent of sessions do not make it in. "
+                   "That is its behaviour, not a harness failure, and patching it would mean "
+                   "publishing a number for something nobody runs.\n")
+
+    dropped = {k: v for k, v in (excluded or {}).items() if k != "_ingest_loss"}
     out.append("\n## What was excluded, and why\n")
-    if excluded:
-        out.append("A question was scored only if every arm ingested its corpus completely. "
-                   "These were dropped for all arms:\n")
-        for arm, ids in excluded.items():
-            out.append("- **%s**: %d question(s) — e.g. %s" % (arm, len(ids), ", ".join(ids[:5])))
+    if dropped:
+        out.append("Questions where an arm lost more than the allowed share of its corpus. "
+                   "Dropped for every arm, so all arms answer the same set:\n")
+        for arm, ids in dropped.items():
+            out.append("- **%s**: %d question(s) — e.g. %s" % (ARM_LABEL.get(arm, arm), len(ids), ", ".join(ids[:5])))
     else:
-        out.append("No question was dropped: every arm ingested every corpus completely.\n")
+        out.append("No question was dropped: no arm lost more than the allowed share of any corpus.\n")
 
     out.append("\n## Reading these numbers\n")
     out.append(

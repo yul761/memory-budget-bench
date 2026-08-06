@@ -165,6 +165,9 @@ def retrieve_one(arm, backend, q, args):
                        for e in (retrieved.get("events") or [])],
         }
         meta["retrieval_mode"] = (retrieved.get("retrieval") or {}).get("mode")
+        # Everything the system had, or everything we were allowed to ask for?
+        # The two are indistinguishable downstream unless it is recorded here.
+        meta["capture_capped"] = len(payload["events"]) >= args.retrieve_k
         meta["timings"] = {
             "ingest_s": round(t_ing - t0, 1), "drain_s": round(t_drain - t_ing, 1),
             "digest_s": round(t_dig - t_drain, 1), "retrieve_s": round(time.time() - t_dig, 1),
@@ -223,18 +226,28 @@ def phase_retrieve(args):
 # --------------------------------------------------------------------------
 # phase 2 — answer at a budget
 # --------------------------------------------------------------------------
-def eligible_questions(run_dir, arms, data):
-    """Questions every arm ingested completely.
+def eligible_questions(run_dir, arms, data, max_loss=0.10):
+    """Questions usable for comparison, plus what each arm lost getting there.
 
-    An arm that lost part of a question's corpus makes that question
-    incomparable, so it is dropped for every arm rather than silently scored.
+    Requiring a perfect ingest from every arm sounds right and is not workable:
+    mem0 as released fails to ingest roughly 5% of sessions — it extracts nothing
+    from some small talk and then embeds an empty string, which its API rejects.
+    That is deterministic, not a blip, so an all-or-nothing rule would discard
+    most of the dataset and measure nothing.
+
+    A question is dropped when an arm lost more than `max_loss` of its corpus,
+    which is a real hole. Below that the question is kept and the loss is
+    reported, because "mem0 held 95% of this corpus" is a finding to publish, not
+    a reason to publish nothing.
     """
-    complete = {}
+    usable = {}
+    loss = {}
     for arm in arms:
         path = os.path.join(run_dir, "retrieve-%s.jsonl" % arm)
         if not os.path.exists(path):
             return set(), {"missing_arm": arm}
         ok = set()
+        arm_loss = []
         for line in open(path):
             if not line.strip():
                 continue
@@ -242,14 +255,25 @@ def eligible_questions(run_dir, arms, data):
             if rec.get("error"):
                 continue
             ing = rec.get("ingest") or {}
-            if ing.get("errors"):
-                continue
-            ok.add(rec["question_id"])
-        complete[arm] = ok
+            total = ing.get("events") or 0
+            errors = ing.get("errors") or 0
+            share = (errors / total) if total else 0.0
+            arm_loss.append(share)
+            if share <= max_loss:
+                ok.add(rec["question_id"])
+        usable[arm] = ok
+        if arm_loss:
+            arm_loss.sort()
+            loss[arm] = {
+                "median_loss": round(arm_loss[len(arm_loss) // 2], 4),
+                "max_loss": round(arm_loss[-1], 4),
+                "questions_over_threshold": sum(1 for x in arm_loss if x > max_loss),
+            }
 
     all_ids = {q["question_id"] for q in data}
-    eligible = set.intersection(*complete.values()) & all_ids
-    excluded = {arm: sorted(all_ids - ids)[:10] for arm, ids in complete.items() if all_ids - ids}
+    eligible = set.intersection(*usable.values()) & all_ids
+    excluded = {arm: sorted(all_ids - ids)[:10] for arm, ids in usable.items() if all_ids - ids}
+    excluded["_ingest_loss"] = loss
     return eligible, excluded
 
 
@@ -259,7 +283,7 @@ def phase_answer(args):
     by_id = {q["question_id"]: q for q in data}
 
     required = [a.strip() for a in args.require_arms.split(",") if a.strip()]
-    eligible, excluded = eligible_questions(run_dir, required, data)
+    eligible, excluded = eligible_questions(run_dir, required, data, args.max_ingest_loss)
     if excluded:
         print("excluded (incomplete ingest): %s" % json.dumps(excluded)[:400], flush=True)
     print("answering %d/%d questions at budget=%d for arm=%s"
@@ -363,7 +387,11 @@ def main():
     ap.add_argument("--granularity", default="session", choices=["message", "session"])
     ap.add_argument("--no-occurred-at", action="store_true")
     ap.add_argument("--digest-wait", type=int, default=180)
-    ap.add_argument("--retrieve-k", type=int, default=200,
+    # StateCore's frozen /v1 contract caps `limit` at 100. That is comfortably
+    # above this dataset's ~50 sessions, but the cap is real, so capture_capped
+    # below records when a run actually hits it rather than letting a silent
+    # top-100 truncation pass for "that was everything".
+    ap.add_argument("--retrieve-k", type=int, default=100,
                     help="how much to capture, not how much to use; budgets decide that offline")
     ap.add_argument("--budget", type=int, default=16000)
     ap.add_argument("--answerer", default="gpt-5")
@@ -374,6 +402,9 @@ def main():
     # this only for smoke tests.
     ap.add_argument("--require-arms", default=",".join(ARMS),
                     help="comma-separated arms that must have complete ingest")
+    # Above this share of a question's corpus lost at ingest, the question is
+    # dropped for every arm. Below it, the question is kept and the loss reported.
+    ap.add_argument("--max-ingest-loss", type=float, default=0.10)
     ap.add_argument("--resume", action="store_true")
     args = ap.parse_args()
 
