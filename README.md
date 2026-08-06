@@ -1,4 +1,4 @@
-# memory-benchmarks
+# memory-budget-bench
 
 Tooling for comparing [StateCore](https://github.com/yul761/StateCore) against
 other long-term memory systems on LongMemEval, at an equal context budget.
