@@ -7,6 +7,31 @@ This exists as its own repository because a benchmark result is only as
 trustworthy as the harness that produced it. If the numbers are published, the
 thing that produced them has to be readable too.
 
+## Who maintains this
+
+StateCore does. One of the systems measured here is ours, which is a reason to
+read our numbers sceptically, and we would rather say so than have you find out.
+
+What follows from it, concretely:
+
+- **Results that go against us stay in the repository.** `withdrawn/` holds a
+  comparison we ran, published, and then retracted after finding the harness had
+  handed StateCore the entire corpus. It is kept with a notice explaining exactly
+  what was wrong with it, because a benchmark maintained by an interested party is
+  worth nothing if the failures quietly disappear.
+- **The harness is the argument.** Every guarantee in the list below exists
+  because we got it wrong first. If you disagree with how something is measured,
+  the code is here and the disagreement is about something specific.
+- **Every run leaves its evidence on disk.** `runs/<name>/retrievals/<arm>/<qid>.json`
+  is exactly what each system handed the answerer. You do not have to take a
+  reported score on trust; you can read what produced it.
+- **The controls are not decoration.** The `recency` and `full` arms exist to make
+  it possible for StateCore to look unnecessary. A comparison that cannot produce
+  that outcome is not measuring anything.
+
+If you find a way this harness favours StateCore, open an issue. That is a more
+useful contribution than a competing benchmark.
+
 ## Why "at an equal context budget"
 
 An earlier run of this comparison was withdrawn. It gave both systems `top-k 50`,
