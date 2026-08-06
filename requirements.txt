@@ -1,0 +1,8 @@
+# Pinned so a published number can be reproduced, not approximated.
+openai==2.48.0
+tiktoken==0.13.0
+requests==2.32.5
+numpy==2.0.2
+
+# Guards on the budget-filling rules (test_budget.py).
+pytest==8.4.2
