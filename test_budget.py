@@ -74,3 +74,41 @@ def test_token_counting_is_shared_across_arms():
     # Both arms must be measured with one encoder or the budget is not equal.
     assert count_tokens("hello") == count_tokens("hello")
     assert count_tokens("") == 0
+
+
+def test_an_oversized_item_is_skipped_not_treated_as_a_wall():
+    # The defect this covers: the filler `break`ed on the first item too big to
+    # fit, so everything ranked below it was dropped even when hundreds would
+    # have fitted. That is not symmetric across systems — it costs whichever one
+    # returns larger items. Measured on the real run at budget 4000: StateCore
+    # used 70% of its budget and mem0 99%, purely because mem0's items are short.
+    events = ["HUGE " + ("x " * 3000), "small one", "small two", "small three"]
+    out = build_prompt(Q, D, payload(events), 1000)
+    assert "small one" in out.text
+    assert "small three" in out.text, "items below an oversized one were lost"
+    assert out.items_included == 3
+    assert out.items_dropped == 1
+
+
+def test_skipping_still_respects_the_budget():
+    events = ["HUGE " + ("x " * 3000)] + ["filler %d %s" % (i, "y " * 50) for i in range(200)]
+    for budget in (500, 1000, 4000):
+        out = build_prompt(Q, D, payload(events), budget)
+        assert out.used_tokens <= budget
+
+
+def test_facts_fill_one_at_a_time_rather_than_all_or_nothing():
+    # A fact registry is a list of items, not one item. Treating the block as
+    # atomic meant a registry a shade too large contributed nothing at all: on
+    # the real run the entire fact layer was dropped for 200/200 questions.
+    facts = [{"content": "fact %d: %s" % (i, "z " * 20)} for i in range(100)]
+    out = build_prompt(Q, D, payload(["an event"], facts=facts), 1000)
+    assert "fact 0" in out.text
+    assert out.used_tokens <= 1000
+
+
+def test_a_fact_is_never_cut_in_half():
+    facts = [{"content": "SHORT FACT"}, {"content": "LONG " + ("w " * 2000)}]
+    out = build_prompt(Q, D, payload([], facts=facts), 600)
+    assert "SHORT FACT" in out.text
+    assert "w w w" not in out.text

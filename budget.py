@@ -54,6 +54,14 @@ def build_prompt(question: str, question_date: str, payload: dict[str, Any], bud
     `payload` is the persisted retrieval: {digest, factRegistry, events:[{content}]}.
     Order is fixed — digest, then facts, then events in rank order — so the only
     thing that varies between arms is what each system put in them.
+
+    Filling rule: an item is included whole or not at all, and an item too large
+    to fit is skipped rather than ending the fill. The earlier `break` made the
+    score depend on item size instead of retrieval quality — an arm returning
+    whole sessions hit a wall and left a third of its budget unspent, while an
+    arm returning short extracted memories never hit one. A list (facts, events)
+    fills item by item; a blob (the digest) is atomic, since half a summary is
+    not a summary.
     """
     header = "Current date: %s\n\n" % question_date
     footer = "\n\n## Question\n%s" % question
@@ -86,13 +94,30 @@ def build_prompt(question: str, question_date: str, payload: dict[str, Any], bud
             if text:
                 lines.append("- " + text)
         if lines:
-            block = "## Known facts\n" + "\n".join(lines)
-            cost = count_tokens(block)
-            if cost <= remaining:
-                parts.append(block)
-                remaining -= cost
-                facts_tokens = cost
-                sections.append({"section": "factRegistry", "tokens": cost, "items": len(lines)})
+            fact_header = "## Known facts\n"
+            header_cost = count_tokens(fact_header)
+            kept_facts: list[str] = []
+            if header_cost <= remaining:
+                remaining -= header_cost
+                facts_tokens = header_cost
+                for line in lines:
+                    cost = count_tokens(line + "\n")
+                    if cost > remaining:
+                        continue
+                    kept_facts.append(line)
+                    remaining -= cost
+                    facts_tokens += cost
+                if kept_facts:
+                    parts.append(fact_header + "\n".join(kept_facts))
+                    sections.append({
+                        "section": "factRegistry",
+                        "tokens": facts_tokens,
+                        "items": len(kept_facts),
+                        "dropped": len(lines) - len(kept_facts),
+                    })
+                else:
+                    remaining += header_cost
+                    facts_tokens = 0
 
     events = payload.get("events") or []
     included = 0
@@ -110,9 +135,10 @@ def build_prompt(question: str, question_date: str, payload: dict[str, Any], bud
                 line = "- " + content
                 cost = count_tokens(line + "\n")
                 if cost > remaining:
-                    # Whole-item rule: stop, do not cut this one down to fit.
-                    dropped = len(events) - included
-                    break
+                    # Whole-item rule: skip this one, do not cut it down to fit —
+                    # and keep going, because a later item may still fit.
+                    dropped += 1
+                    continue
                 kept.append(line)
                 remaining -= cost
                 included += 1
