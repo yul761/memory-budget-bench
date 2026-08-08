@@ -7,6 +7,29 @@ This exists as its own repository because a benchmark result is only as
 trustworthy as the harness that produced it. If the numbers are published, the
 thing that produced them has to be readable too.
 
+## Latest result — 2026-08-08
+
+194 questions, `gpt-5` answering, the official LongMemEval `gpt-4o` judge.
+StateCore [`96b853d`](https://github.com/yul761/StateCore/commit/96b853d), mem0
+`mem0ai==2.0.17` unmodified. 95% Wilson intervals.
+
+| system | 4,000 tok | 16,000 tok | 64,000 tok |
+|---|---|---|---|
+| **StateCore** | 51.0% ±7.0 | **80.9% ±5.5** | **87.6% ±4.6** |
+| **mem0 OSS** | **61.3% ±6.9** | 59.8% ±6.9 | 61.3% ±6.9 |
+| No memory (recency window) | 9.3% ±4.1 | 22.7% ±5.9 | 53.6% ±7.0 |
+| No memory (whole corpus — ceiling) | — | — | 70.1% ±6.4 |
+
+Three separate findings, not one. StateCore wins at 16k and 64k. **mem0 wins at
+4k by 10 points** — narrow budgets reward fragmented storage, and that is
+reported rather than closed. At 64k StateCore beats the ceiling, which is the
+only line here that argues a memory layer is worth having.
+
+Full report with per-question-type breakdown, budget utilisation, ingest
+completeness and exclusions: **[`FAIR-REPORT.md`](FAIR-REPORT.md)**.
+Evidence — raw retrievals, judge verdicts, the scripts that ran it:
+[`artifacts/`](artifacts/).
+
 ## Who maintains this
 
 StateCore does. One of the systems measured here is ours, which is a reason to
