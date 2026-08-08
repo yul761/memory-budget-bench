@@ -1,0 +1,76 @@
+{
+  "run": "fair/answers/statecore-b4000",
+  "judge": "gpt-4o",
+  "meta": {
+    "arm": "statecore",
+    "budget": 4000,
+    "answerer": "gpt-5",
+    "n_eligible": 194,
+    "excluded": {
+      "mem0": [
+        "0a34ad58",
+        "1903aded",
+        "2bf43736",
+        "488d3006",
+        "60d45044",
+        "f4f1d8a4"
+      ],
+      "_ingest_loss": {
+        "statecore": {
+          "median_loss": 0.0,
+          "max_loss": 0.0,
+          "questions_over_threshold": 0
+        },
+        "mem0": {
+          "median_loss": 0.0426,
+          "max_loss": 0.125,
+          "questions_over_threshold": 6
+        }
+      }
+    },
+    "usage": {
+      "prompt_tokens": 765934,
+      "completion_tokens": 87252
+    },
+    "statecore_commit": "96b853d",
+    "finished": "2026-08-08T10:54:56.734729",
+    "wall_clock_min": 21.2
+  },
+  "overall": {
+    "correct": 99,
+    "total": 194,
+    "accuracy": 0.5103
+  },
+  "by_type": {
+    "multi-session": {
+      "correct": 14,
+      "total": 34,
+      "accuracy": 0.4118
+    },
+    "knowledge-update": {
+      "correct": 21,
+      "total": 34,
+      "accuracy": 0.6176
+    },
+    "single-session-preference": {
+      "correct": 7,
+      "total": 29,
+      "accuracy": 0.2414
+    },
+    "single-session-user": {
+      "correct": 19,
+      "total": 32,
+      "accuracy": 0.5938
+    },
+    "temporal-reasoning": {
+      "correct": 8,
+      "total": 34,
+      "accuracy": 0.2353
+    },
+    "single-session-assistant": {
+      "correct": 30,
+      "total": 31,
+      "accuracy": 0.9677
+    }
+  }
+}

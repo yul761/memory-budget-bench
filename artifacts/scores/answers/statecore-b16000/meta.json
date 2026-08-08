@@ -1,0 +1,35 @@
+{
+  "arm": "statecore",
+  "budget": 16000,
+  "answerer": "gpt-5",
+  "n_eligible": 194,
+  "excluded": {
+    "mem0": [
+      "0a34ad58",
+      "1903aded",
+      "2bf43736",
+      "488d3006",
+      "60d45044",
+      "f4f1d8a4"
+    ],
+    "_ingest_loss": {
+      "statecore": {
+        "median_loss": 0.0,
+        "max_loss": 0.0,
+        "questions_over_threshold": 0
+      },
+      "mem0": {
+        "median_loss": 0.0426,
+        "max_loss": 0.125,
+        "questions_over_threshold": 6
+      }
+    }
+  },
+  "usage": {
+    "prompt_tokens": 3094298,
+    "completion_tokens": 113425
+  },
+  "statecore_commit": "96b853d",
+  "finished": "2026-08-08T12:09:57.305780",
+  "wall_clock_min": 27.2
+}
